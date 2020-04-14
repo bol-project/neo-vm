@@ -1,38 +1,55 @@
-﻿using System;
+using System;
+using System.Diagnostics;
 
 namespace Neo.VM.Types
 {
+    [DebuggerDisplay("Type={GetType().Name}, Value={_object}")]
     public class InteropInterface : StackItem
     {
-        private IInteropInterface _object;
+        private readonly object _object;
 
-        public InteropInterface(IInteropInterface value)
+        public override StackItemType Type => StackItemType.InteropInterface;
+
+        public InteropInterface(object value)
         {
-            this._object = value;
+            _object = value ?? throw new ArgumentException();
         }
 
-        public override bool Equals(StackItem other)
+        public override bool Equals(object obj)
         {
-            if (ReferenceEquals(this, other)) return true;
-            if (ReferenceEquals(null, other)) return false;
-            InteropInterface i = other as InteropInterface;
-            if (i == null) return false;
-            return _object.Equals(i._object);
+            if (ReferenceEquals(this, obj)) return true;
+            if (obj is InteropInterface i) return _object.Equals(i._object);
+            return false;
         }
 
-        public override bool GetBoolean()
-        {
-            return _object != null;
-        }
-
-        public override byte[] GetByteArray()
+        public override int GetHashCode()
         {
             throw new NotSupportedException();
         }
 
-        public T GetInterface<T>() where T : class, IInteropInterface
+        public T GetInterface<T>()
         {
-            return _object as T;
+            if (_object is T t) return t;
+            throw new InvalidCastException();
+        }
+
+        public override bool ToBoolean()
+        {
+            return true;
+        }
+
+        public bool TryGetInterface<T>(out T result)
+        {
+            if (_object is T t)
+            {
+                result = t;
+                return true;
+            }
+            else
+            {
+                result = default;
+                return false;
+            }
         }
     }
 }

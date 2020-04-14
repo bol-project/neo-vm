@@ -1,62 +1,102 @@
-﻿using System;
-using System.Collections.Generic;
-using System.IO;
+using System.Diagnostics;
+using System.Runtime.CompilerServices;
 
 namespace Neo.VM
 {
-    public class ExecutionContext : IDisposable
+    [DebuggerDisplay("RVCount={RVCount}, InstructionPointer={InstructionPointer}")]
+    public sealed partial class ExecutionContext
     {
-        private ExecutionEngine engine;
-        public readonly byte[] Script;
-        public readonly bool PushOnly;
-        internal readonly BinaryReader OpReader;
-        internal readonly HashSet<uint> BreakPoints;
+        private readonly SharedStates shared_states;
 
-        public int InstructionPointer
+        /// <summary>
+        /// Number of items to be returned
+        /// </summary>
+        internal int RVCount { get; }
+
+        /// <summary>
+        /// Script
+        /// </summary>
+        public Script Script => shared_states.Script;
+
+        /// <summary>
+        /// Evaluation stack
+        /// </summary>
+        public EvaluationStack EvaluationStack => shared_states.EvaluationStack;
+
+        public Slot StaticFields
         {
+            get => shared_states.StaticFields;
+            internal set => shared_states.StaticFields = value;
+        }
+
+        public Slot LocalVariables { get; internal set; }
+
+        public Slot Arguments { get; internal set; }
+
+        /// <summary>
+        /// Instruction pointer
+        /// </summary>
+        public int InstructionPointer { get; set; }
+
+        public Instruction CurrentInstruction
+        {
+            [MethodImpl(MethodImplOptions.AggressiveInlining)]
             get
             {
-                return (int)OpReader.BaseStream.Position;
-            }
-            set
-            {
-                OpReader.BaseStream.Seek(value, SeekOrigin.Begin);
+                return GetInstruction(InstructionPointer);
             }
         }
 
-        public OpCode NextInstruction => (OpCode)Script[OpReader.BaseStream.Position];
-
-        private byte[] _script_hash = null;
-        public byte[] ScriptHash
+        /// <summary>
+        /// Next instruction
+        /// </summary>
+        public Instruction NextInstruction
         {
+            [MethodImpl(MethodImplOptions.AggressiveInlining)]
             get
             {
-                if (_script_hash == null)
-                    _script_hash = engine.Crypto.Hash160(Script);
-                return _script_hash;
+                return GetInstruction(InstructionPointer + CurrentInstruction.Size);
             }
         }
 
-        internal ExecutionContext(ExecutionEngine engine, byte[] script, bool push_only, HashSet<uint> break_points = null)
+        /// <summary>
+        /// Constructor
+        /// </summary>
+        /// <param name="script">Script</param>
+        /// <param name="rvcount">Number of items to be returned</param>
+        internal ExecutionContext(Script script, int rvcount, ReferenceCounter referenceCounter)
+            : this(new SharedStates(script, referenceCounter), rvcount)
         {
-            this.engine = engine;
-            this.Script = script;
-            this.PushOnly = push_only;
-            this.OpReader = new BinaryReader(new MemoryStream(script, false));
-            this.BreakPoints = break_points ?? new HashSet<uint>();
         }
 
-        public ExecutionContext Clone()
+        private ExecutionContext(SharedStates shared_states, int rvcount)
         {
-            return new ExecutionContext(engine, Script, PushOnly, BreakPoints)
+            this.shared_states = shared_states;
+            this.RVCount = rvcount;
+        }
+
+        internal ExecutionContext Clone()
+        {
+            return new ExecutionContext(shared_states, 0);
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private Instruction GetInstruction(int ip) => Script.GetInstruction(ip);
+
+        public T GetState<T>() where T : class, new()
+        {
+            if (!shared_states.States.TryGetValue(typeof(T), out object value))
             {
-                InstructionPointer = InstructionPointer
-            };
+                value = new T();
+                shared_states.States[typeof(T)] = value;
+            }
+            return (T)value;
         }
 
-        public void Dispose()
+        internal bool MoveNext()
         {
-            OpReader.Dispose();
+            InstructionPointer += CurrentInstruction.Size;
+            return InstructionPointer < Script.Length;
         }
     }
 }

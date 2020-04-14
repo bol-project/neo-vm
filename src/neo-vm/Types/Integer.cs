@@ -1,41 +1,81 @@
-﻿using System.Linq;
+using System;
+using System.Diagnostics;
 using System.Numerics;
+using System.Runtime.CompilerServices;
 
 namespace Neo.VM.Types
 {
-    public class Integer : StackItem
+    [DebuggerDisplay("Type={GetType().Name}, Value={value}")]
+    public class Integer : PrimitiveType
     {
-        private BigInteger value;
+        public const int MaxSize = 32;
+
+        public static readonly Integer Zero = 0;
+        private readonly BigInteger value;
+
+        internal override ReadOnlyMemory<byte> Memory => value.IsZero ? ReadOnlyMemory<byte>.Empty : value.ToByteArray();
+        public override int Size { get; }
+        public override StackItemType Type => StackItemType.Integer;
 
         public Integer(BigInteger value)
         {
+            if (value.IsZero)
+            {
+                Size = 0;
+            }
+            else
+            {
+                Size = value.GetByteCount();
+                if (Size > MaxSize) throw new ArgumentException();
+            }
             this.value = value;
         }
 
-        public override bool Equals(StackItem other)
+        public override bool Equals(PrimitiveType other)
         {
             if (ReferenceEquals(this, other)) return true;
-            if (ReferenceEquals(null, other)) return false;
-            Integer i = other as Integer;
-            if (i == null)
-                return GetByteArray().SequenceEqual(other.GetByteArray());
-            else
-                return value == i.value;
+            if (other is Integer i) return value == i.value;
+            return base.Equals(other);
         }
 
-        public override BigInteger GetBigInteger()
+        public override BigInteger ToBigInteger()
         {
             return value;
         }
 
-        public override bool GetBoolean()
+        public override bool ToBoolean()
         {
-            return value != BigInteger.Zero;
+            return !value.IsZero;
         }
 
-        public override byte[] GetByteArray()
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static implicit operator Integer(int value)
         {
-            return value.ToByteArray();
+            return (BigInteger)value;
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static implicit operator Integer(uint value)
+        {
+            return (BigInteger)value;
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static implicit operator Integer(long value)
+        {
+            return (BigInteger)value;
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static implicit operator Integer(ulong value)
+        {
+            return (BigInteger)value;
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static implicit operator Integer(BigInteger value)
+        {
+            return new Integer(value);
         }
     }
 }
